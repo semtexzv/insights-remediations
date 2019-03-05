@@ -1,0 +1,44 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: playbooks-ssg-artifacts
+spec:
+  resources:
+    limits:
+      memory: 2Gi
+    requests:
+      memory: 2Gi
+  output:
+    to:
+      kind: ImageStreamTag
+      name: playbooks-ssg-artifacts:latest
+  source:
+    dockerfile: |-
+      FROM centos:7
+
+      RUN set -eux; \
+          yum -y install make cmake openscap-utils python-jinja2 python-argparse PyYAML;
+
+      WORKDIR /ssg
+
+      ARG REVISION=08628341e72eaa0e94bc898774c575011ace05c1
+      ENV REVISION=$REVISION
+      LABEL remediations.ssg.revision=${REVISION}
+
+      RUN set -eux; \
+          curl -s -L "https://github.com/ComplianceAsCode/content/tarball/${REVISION}" --output - | tar xz; \
+          cd ComplianceAsCode-content-*; \
+          pwd; \
+          echo "$REVISION" > revision.txt; \
+          zip /ssg/playbooks.zip revision.txt; \
+          for i in rhel6 rhel7 rhel8; do \
+              free -h; \
+              ./build_product $i; \
+              cd build; \
+              zip -r /ssg/playbooks.zip rhel*/playbooks; \
+              cd ..; \
+          done; \
+          unzip -l /ssg/playbooks.zip;
+
+  strategy:
+    dockerStrategy: {}

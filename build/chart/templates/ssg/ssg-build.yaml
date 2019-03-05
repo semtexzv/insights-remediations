@@ -1,0 +1,37 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: playbooks-ssg
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: playbooks-ssg:latest
+  source:
+    dockerfile: |-
+      FROM registry.access.redhat.com/rhscl/nginx-114-rhel7
+      COPY playbooks.zip /tmp/playbooks.zip
+
+      RUN set -eux; \
+          rmdir /opt/app-root/src/nginx-start; \
+          mkdir -p /opt/app-root/src/playbooks; \
+          unzip /tmp/playbooks.zip -d /opt/app-root/src/playbooks; \
+          echo "location /playbooks { autoindex on; disable_symlinks on; }" > /opt/app-root/etc/nginx.default.d/default.conf
+
+      CMD ["/usr/libexec/s2i/run"]
+    images:
+    - from:
+        kind: ImageStreamTag
+        name: playbooks-ssg-artifacts:latest
+      paths:
+      - sourcePath: /ssg/playbooks.zip
+        destinationDir: "."
+
+  strategy:
+    dockerStrategy: {}
+  triggers:
+  - imageChange:
+      from:
+        kind: ImageStreamTag
+        name: playbooks-ssg-artifacts:latest
+    type: ImageChange
