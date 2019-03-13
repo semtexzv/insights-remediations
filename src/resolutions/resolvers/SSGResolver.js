@@ -9,6 +9,7 @@ const yaml = require('js-yaml');
 const log = require('../../util/log');
 
 const DEFAULT_NAME = 'Apply fix';
+const PLACEHOLDER_REGEX = /(@([A-Z_])+@)/;
 
 function getName (parsed) {
     if (parsed.tasks.length === 1) {
@@ -19,7 +20,7 @@ function getName (parsed) {
 }
 
 function testPlaceholders (raw) {
-    const result = /(@.*@)/.exec(raw.replace('@@HOSTS@@', 'hosts'));
+    const result = PLACEHOLDER_REGEX.exec(raw.replace('@@HOSTS@@', 'hosts'));
 
     if (result) {
         throw new Error(`Unresolved interpolation placeholder ${result[1]}`);
