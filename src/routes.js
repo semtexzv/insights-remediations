@@ -49,6 +49,13 @@ module.exports = async function (app) {
     app.use(bodyParser.json({
         limit: config.bodyParserLimit
     }));
+    app.use((err, req, res, next) => {
+        if (err.type === 'entity.parse.failed') {
+            throw new errors.BadRequest('INVALID_FORMAT', 'The request body must be in JSON format.');
+        } else {
+          next()
+        }
+      })
 
     app.use(httpContext.middleware);
     app.use(cls.middleware);
