@@ -53,9 +53,9 @@ module.exports = async function (app) {
         if (err.type === 'entity.parse.failed') {
             throw new errors.BadRequest('INVALID_FORMAT', 'The request body must be in JSON format.');
         } else {
-          next()
+            next();
         }
-      })
+    });
 
     app.use(httpContext.middleware);
     app.use(cls.middleware);
