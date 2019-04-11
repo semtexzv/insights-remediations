@@ -17,6 +17,7 @@ exports.fn = _(['COALESCE', 'COUNT', 'DISTINCT', 'NULLIF', 'SUM'])
 exports.Op = Sequelize.Op;
 
 function loadModels (sequelize, dir) {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     const models = fs.readdirSync(dir).reduce((models, current) => {
         const model = sequelize.import(path.join(dir, current));
         models[model.name] = model;
@@ -39,7 +40,7 @@ exports.connect = async function () {
     const models = loadModels(exports.s, path.join(__dirname, '..', 'remediations', 'models'));
     _.assign(exports, models);
 
-    log.info('connected to database');
+    log.info({ssl: config.ssl || false }, 'connected to database');
     return exports.s;
 };
 
