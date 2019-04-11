@@ -140,6 +140,24 @@ describe('remediations', function () {
                 title: 'should NOT have additional properties (location: body, path: undefined)'
             }]);
         });
+
+        test('400s on post with invalid body format', async () => {
+            const {id, header} = reqId();
+
+            const {body} = await request
+            .post('/v1/remediations')
+            .set(header)
+            .set(auth.testWrite)
+            .send('<test>xml is not allowed</test>')
+            .expect(400);
+
+            body.errors.should.eql([{
+                id,
+                status: 400,
+                code: 'INVALID_FORMAT',
+                title: 'The request body must be in JSON format.'
+            }]);
+        });
     });
 
     describe('update', function () {
