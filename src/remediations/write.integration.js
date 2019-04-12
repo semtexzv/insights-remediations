@@ -148,11 +148,11 @@ describe('remediations', function () {
             .post('/v1/remediations')
             .set(header)
             .set(auth.testWrite)
+            .type('json')
             .send('<test>xml is not allowed</test>')
             .expect(400);
 
             body.errors.should.eql([{
-                id,
                 status: 400,
                 code: 'INVALID_FORMAT',
                 title: 'The request body must be in JSON format.'
