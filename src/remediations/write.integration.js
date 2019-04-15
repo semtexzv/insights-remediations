@@ -141,7 +141,7 @@ describe('remediations', function () {
             }]);
         });
 
-        test('400s on post with invalid body format', async () => {
+        test('400s on post with invalid json body format', async () => {
             const {id, header} = reqId();
 
             const {body} = await request
@@ -156,6 +156,25 @@ describe('remediations', function () {
                 status: 400,
                 code: 'INVALID_FORMAT',
                 title: 'The request body must be in JSON format.'
+            }]);
+        });
+
+        test('400s on post with xml content-type', async () => {
+            const {id, header} = reqId();
+
+            const {body} = await request
+            .post('/v1/remediations')
+            .set(header)
+            .set(auth.testWrite)
+            .type('application/xml')
+            .send('<test>xml is not allowed</test>')
+            .expect(400);
+
+            body.errors.should.eql([{
+                id,
+                status: 400,
+                code: 'VALIDATION_ERROR',
+                title: 'Unsupported Content-Type application/xml (location: undefined, path: undefined)'
             }]);
         });
     });
