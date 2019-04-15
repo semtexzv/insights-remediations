@@ -154,7 +154,7 @@ describe('remediations', function () {
 
             body.errors.should.eql([{
                 status: 400,
-                code: 'INVALID_FORMAT',
+                code: 'INVALID_CONTENT_TYPE',
                 title: 'The request body must be in JSON format.'
             }]);
         });
