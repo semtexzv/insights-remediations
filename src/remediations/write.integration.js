@@ -142,7 +142,7 @@ describe('remediations', function () {
         });
 
         test('400s on post with invalid json body format', async () => {
-            const {id, header} = reqId();
+            const {header} = reqId();
 
             const {body} = await request
             .post('/v1/remediations')
