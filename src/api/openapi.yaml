@@ -408,7 +408,7 @@ components:
       required: false
       schema:
         type: string
-        enum: [updated_at, -updated_at, name, -name, system_count, -system_count, issue_count, -issue_count]
+        enum: [updated_at, -updated_at, name, -name, _1, -_1, _0, -_0]
         default: -updated_at
     RemediationSystem:
       in: query

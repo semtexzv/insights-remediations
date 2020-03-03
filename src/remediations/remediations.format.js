@@ -33,7 +33,7 @@ function buildListLinks (total, limit, offset, sort, system) {
 
 exports.list = function (remediations, total, limit, offset, sort, system) {
     const formatted = _.map(remediations,
-        ({id, name, needs_reboot, created_by, created_at, updated_by, updated_at, system_count, issue_count}) => ({
+        ({id, name, needs_reboot, created_by, created_at, updated_by, updated_at, _1, _0}) => ({
             id,
             name,
             created_by: _.pick(created_by, ['username', 'first_name', 'last_name']),
@@ -41,8 +41,8 @@ exports.list = function (remediations, total, limit, offset, sort, system) {
             updated_by: _.pick(updated_by, ['username', 'first_name', 'last_name']),
             updated_at: updated_at.toISOString(),
             needs_reboot,
-            system_count,
-            issue_count
+            system_count: _1,
+            issue_count: _0
         })
     );
 

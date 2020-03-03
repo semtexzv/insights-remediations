@@ -53,8 +53,8 @@ exports.list = function (
     const query = {
         attributes: [
             'id',
-            [cast(COUNT(DISTINCT(col('issues.id'))), 'int'), 'issue_count'],
-            [cast(COUNT(DISTINCT(col('issues->systems.system_id'))), 'int'), 'system_count']
+            [cast(COUNT(DISTINCT(col('issues.id'))), 'int'), '_0'],
+            [cast(COUNT(DISTINCT(col('issues->systems.system_id'))), 'int'), '_1']
         ],
         include: [{
             attributes: [],

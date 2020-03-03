@@ -97,10 +97,10 @@ describe('remediations', function () {
             testSorting('updated_at', false, r256, r178, re80, rcbc, r66e);
             testSorting('name', true, r66e, rcbc, r178, r256, re80);
             testSorting('name', false, re80, r256, r178, rcbc, r66e);
-            testSorting('issue_count', true, r256, r178, re80, rcbc, r66e);
-            testSorting('issue_count', false, r66e, rcbc, r178, re80, r256);
-            testSorting('system_count', true, r256, r178, rcbc, r66e, re80);
-            testSorting('system_count', false, r66e, re80, r178, rcbc, r256);
+            testSorting('_0', true, r256, r178, re80, rcbc, r66e);
+            testSorting('_0', false, r66e, rcbc, r178, re80, r256);
+            testSorting('_1', true, r256, r178, rcbc, r66e, re80);
+            testSorting('_1', false, r66e, re80, r178, rcbc, r256);
 
             test400(
                 'invalid column',
