@@ -4,6 +4,7 @@ const _ = require('lodash');
 const P = require('bluebird');
 const uuid = require('uuid/v4');
 
+const queries = require('./remediations.queries');
 const format = require('./remediations.format');
 const generator = require('../generator/generator.controller');
 const inventory = require('../connectors/inventory');
@@ -137,10 +138,13 @@ exports.sendInitialRequest = async function (status, remediation, account) {
     const playbook_run_id = exports.generatePlaybookRunId();
     const executors = _.filter(status, {status: 'connected'});
     const remediationIssues = remediation.toJSON().issues;
+    let tableData = [];
 
     if (_.isEmpty(executors)) {
         return null;
     }
+
+    const playbookRunData = format.playbookRunsTableData(remediation, playbook_run_id);
 
     await P.mapSeries(executors, async (executor, index) => {
         try {
@@ -148,7 +152,7 @@ exports.sendInitialRequest = async function (status, remediation, account) {
                 await exports.filterIssuesPerExecutor(executor.systems, remediationIssues)
             );
 
-            const playbook = await generator.playbookPipeline ({
+            const playbook = await generator.playbookPipeline({
                 issues: filteredIssues,
                 auto_reboot: remediation.auto_reboot
             }, remediation, false);
@@ -161,6 +165,7 @@ exports.sendInitialRequest = async function (status, remediation, account) {
                 playbook_run_id), account, executor.receptorId);
 
             probes.splitPlaybookPerSatId(receptorWorkRequest, executor.satId);
+            tableData = await format.gatherTableData(receptorWorkRequest, executor, tableData);
             return await receptorConnector.postInitialRequest(receptorWorkRequest);
         } catch (e) {
             if (index !== 0) {
@@ -171,6 +176,9 @@ exports.sendInitialRequest = async function (status, remediation, account) {
             throw e;
         }
     });
+
+    // Initialize tables
+    queries.initializePlaybookRunTables(playbookRunData, tableData);
 
     return playbook_run_id;
 };

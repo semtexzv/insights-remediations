@@ -159,3 +159,9 @@ exports.get = function (id, account_number, created_by) {
         ]
     });
 };
+
+exports.initializePlaybookRunTables = async function (runData, {executorData, systemData}) {
+    db.playbook_runs.create(runData);
+    db.playbook_run_executors.bulkCreate(executorData);
+    db.playbook_run_systems.bulkCreate(systemData);
+};

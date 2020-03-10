@@ -2,6 +2,7 @@
 
 const _ = require('lodash');
 const URI = require('urijs');
+const uuid = require('uuid/v4');
 
 const DEFAULT_REMEDIATION_NAME = 'unnamed-playbook';
 const PLAYBOOK_SUFFIX = 'yml';
@@ -158,4 +159,48 @@ exports.receptorWorkRequest = function (playbookRunRequest, account_number, rece
         payload: JSON.stringify(playbookRunRequest),
         directive: 'receptor_satellite:execute'
     };
+};
+
+exports.playbookRunsTableData = function (remediation, playbook_run_id) {
+    return {
+        id: playbook_run_id,
+        status: 'pending',
+        remediation_id: remediation.id,
+        created_by: remediation.created_by,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+    };
+};
+
+exports.gatherTableData = async function (workRequest, executor, {executorData, systemData}) {
+    const executor_id = uuid();
+    const payload = JSON.parse(workRequest.payload);
+
+    const executorDetails = {
+        id: executor_id,
+        executor_id: executor.satId,
+        executor_name: executor.name,
+        receptor_node_id: uuid(),
+        receptor_job_id: executor.receptorId,
+        status: 'pending',
+        updated_at: new Date().toISOString(),
+        playbook: payload.playbook,
+        playbook_run_id: payload.playbook_run_id
+    };
+
+    const systemDetails = _.map(executor.systems, system => ({
+        id: uuid(),
+        system_id: system.id,
+        system_name: system.hostname,
+        status: 'pending',
+        sequence: 0,
+        console: 'system log has started.',
+        updated_at: new Date().toISOString(),
+        playbook_run_executor_id: executor_id
+    }));
+
+    executorData = _.compact(_.concat(executorData, executorDetails));
+    systemData = _.compact(_.concat(systemData, systemDetails));
+
+    return {executorData, systemData};
 };
