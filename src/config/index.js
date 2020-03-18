@@ -55,7 +55,7 @@ const config = {
             enabled: env.LOG_CW_ENABLED === 'true',
             level: env.LOG_CW_LEVEL || env.LOG_LEVEL || 'debug',
             options: {
-                group: env.NAMESPACE || 'remediations-local',
+                group: env.LOG_CW_GROUP || env.NAMESPACE || 'remediations-local',
                 prefix: env.LOG_CW_PREFIX || 'remediations-',
                 interval: parseIntEnv('LOG_CW_INTERVAL', 1000), // 1000 ms
                 aws_access_key_id: env.LOG_CW_KEY,
@@ -205,7 +205,7 @@ const config = {
 
 config.path.base = `${config.path.prefix}/${config.path.app}`;
 
-if (env.DB_CA) {
+if (env.DB_SSL_ENABLED !== 'false' && env.DB_CA) {
     config.db.ssl = true;
     config.db.dialectOptions.ssl = {
         ca: fs.readFileSync(env.DB_CA) // eslint-disable-line security/detect-non-literal-fs-filename
