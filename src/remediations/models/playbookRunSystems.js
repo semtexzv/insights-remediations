@@ -1,7 +1,7 @@
 'use strict';
 
 module.exports = (sequelize, {UUID, ENUM, STRING, DATE, TEXT, INTEGER}) => {
-    const RunSystem = sequelize.define('playbook_run_systems', {
+    const RunSystems = sequelize.define('playbook_run_systems', {
         id: {
             type: UUID,
             primaryKey: true
@@ -23,16 +23,16 @@ module.exports = (sequelize, {UUID, ENUM, STRING, DATE, TEXT, INTEGER}) => {
         sequence: {
             type: INTEGER,
             allowNull: false,
-            defaultVaule: -1
+            defaultValue: -1
         },
         console: {
             type: TEXT,
-            allowNull: false
+            allowNull: false,
+            defaultValue: ''
         },
-        updated_at: DATE,
-        definition: {
-            type: TEXT,
-            allowNull: false
+        updated_at: {
+            type: DATE,
+            allwoNull: false
         },
         playbook_run_executor_id: {
             type: UUID,
@@ -40,14 +40,15 @@ module.exports = (sequelize, {UUID, ENUM, STRING, DATE, TEXT, INTEGER}) => {
         }
     }, {
         timestamps: true,
-        updatedAt: 'updated_at'
+        updatedAt: 'updated_at',
+        createdAt: false
     });
 
-    RunSystem.associate = models => {
-        RunSystem.belongsTo(models.playbook_run_executors, {
-            foreignKey: 'id'
+    RunSystems.associate = models => {
+        RunSystems.belongsTo(models.playbook_run_executors, {
+            foreignKey: 'playbook_run_executor_id'
         });
     };
 
-    return RunSystem;
+    return RunSystems;
 };

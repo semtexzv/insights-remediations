@@ -15,6 +15,14 @@ const REMEDIATION_ATTRIBUTES = [
     'updated_at'
 ];
 const ISSUE_ATTRIBUTES = ['issue_id', 'resolution'];
+const PLAYBOOK_RUN_ATTRIBUTES = [
+    'id',
+    'status',
+    'remediation_id',
+    'created_by',
+    'created_at',
+    'updated_at'
+];
 
 function systemSubquery (system_id) {
     const {s: { dialect, col, literal }, fn: { DISTINCT }, issue, issue_system} = db;
@@ -157,5 +165,167 @@ exports.get = function (id, account_number, created_by) {
             [db.issue, 'issue_id'],
             [db.issue, db.issue.associations.systems, 'system_id']
         ]
+    });
+};
+
+exports.getPlaybookRuns = function (id, account_number, created_by) {
+    const {s: {col, cast}, fn: {DISTINCT, COUNT}} = db;
+
+    return db.remediation.findOne({
+        attributes: [],
+        include: [{
+            attributes: PLAYBOOK_RUN_ATTRIBUTES,
+            model: db.playbook_runs,
+            include: [{
+                attributes: [
+                    'executor_id',
+                    'executor_name',
+                    [cast(COUNT(DISTINCT(col('playbook_runs->executors->systems.id'))), 'int'),
+                        'system_count']],
+                model: db.playbook_run_executors,
+                as: 'executors',
+                include: [{
+                    attributes: [],
+                    model: db.playbook_run_systems,
+                    as: 'systems'
+                }]
+            }]
+        }],
+        where: {
+            id, account_number, created_by
+        },
+        group: [
+            'remediation.id',
+            'playbook_runs.id',
+            'playbook_runs->executors.id'
+        ],
+        order: [
+            [db.playbook_runs, 'created_by', 'DESC']
+        ]
+    });
+};
+
+exports.getRunDetails = function (id, playbook_run_id, account_number, created_by) {
+    const {s: {col, cast}, fn: {DISTINCT, COUNT}} = db;
+
+    return db.remediation.findOne({
+        attributes: [],
+        include: [{
+            attributes: PLAYBOOK_RUN_ATTRIBUTES,
+            model: db.playbook_runs,
+            where: {
+                id: playbook_run_id
+            },
+            include: [{
+                attributes: [
+                    'executor_id',
+                    'executor_name',
+                    'status',
+                    'updated_at',
+                    'playbook',
+                    'playbook_run_id',
+                    [cast(COUNT(DISTINCT(col('playbook_runs->executors->systems.id'))), 'int'),
+                        'system_count']],
+                model: db.playbook_run_executors,
+                as: 'executors',
+                include: [{
+                    attributes: [],
+                    model: db.playbook_run_systems,
+                    as: 'systems'
+                }]
+            }]
+        }],
+        where: {
+            id, account_number, created_by
+        },
+        group: [
+            'remediation.id',
+            'playbook_runs.id',
+            'playbook_runs->executors.id'
+        ],
+        order: [
+            [db.remediation.associations.playbook_runs, db.playbook_runs.associations.executors, 'executor_name', 'ASC']
+        ]
+    });
+};
+
+exports.getSystems = function (remediation_id, playbook_run_id, account, username) {
+    return db.playbook_run_systems.findAll({
+        attributes: [
+            'id',
+            'system_id',
+            'system_name',
+            'status',
+            'updated_at',
+            'playbook_run_executor_id'
+        ],
+        include: [{
+            attributes: ['id'],
+            model: db.playbook_run_executors,
+            required: true,
+            include: [{
+                attributes: ['id'],
+                model: db.playbook_runs,
+                include: [{
+                    attributes: ['id'],
+                    model: db.remediation,
+                    where: {
+                        id: remediation_id,
+                        account_number: account,
+                        created_by: username
+                    }
+                }],
+                where: {
+                    id: playbook_run_id
+                }
+            }]
+        }],
+        order: [
+            ['system_name', 'ASC']
+        ]
+    });
+};
+
+exports.getSystemDetails = function (id, playbook_run_id, system_id, account_number, created_by) {
+    return db.playbook_run_systems.findOne({
+        attributes: [
+            'id',
+            'system_id',
+            'system_name',
+            'status',
+            'updated_at',
+            ['playbook_run_executor_id', 'executor_id'],
+            'console'
+        ],
+        include: [{
+            attributes: ['id'],
+            model: db.playbook_run_executors,
+            required: true,
+            include: [{
+                attributes: ['id'],
+                model: db.playbook_runs,
+                include: [{
+                    attributes: [],
+                    model: db.remediation,
+                    where: {
+                        id, account_number, created_by
+                    }
+                }],
+                where: {
+                    id: playbook_run_id
+                }
+            }]
+        }],
+        where: {
+            system_id
+        }
+    });
+};
+
+exports.insertPlaybookRun = async function (run, executors, systems) {
+    await db.s.transaction(async transaction => {
+        await db.playbook_runs.create(run, {transaction});
+        await db.playbook_run_executors.bulkCreate(executors, {transaction});
+        await db.playbook_run_systems.bulkCreate(systems, {transaction});
     });
 };
