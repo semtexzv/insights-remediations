@@ -1,6 +1,8 @@
 'use strict';
 
 const P = require('bluebird');
+const fs = require('fs');
+const path = require('path');
 
 /* eslint max-len: off */
 const DATA = Object.freeze({
@@ -71,6 +73,18 @@ const DATA = Object.freeze({
     }
 });
 
+function read (dir, file) {
+    return {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
+        template: fs.readFileSync(path.join(__dirname, 'mock', dir, `${file}.yml`), 'utf-8'),
+        version: 'mock'
+    };
+}
+
+exports.readTemplates = function () {
+    return [read('standard', 'security_patches_up_to_date'), read('standard', 'security_patches_up_to_date')];
+};
+
 const Connector = require('../Connector');
 
 module.exports = new class extends Connector {
@@ -80,6 +94,10 @@ module.exports = new class extends Connector {
 
     getRule (id) {
         return P.resolve(DATA[id]); // eslint-disable-line security/detect-object-injection
+    }
+
+    getTemplates() {
+        return exports.readTemplates();
     }
 
     ping () {

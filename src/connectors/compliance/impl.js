@@ -12,7 +12,8 @@ const metrics = require('../metrics');
 module.exports = new class extends Connector {
     constructor () {
         super(module);
-        this.metrics = metrics.createConnectorMetric(this.getName());
+        this.metrics = metrics.createConnectorMetric(this.getName(), 'getRule');
+        this.metrics = metrics.createConnectorMetric(this.getName(), 'getTemplates');
     }
 
     async getRule (id, refresh = false, retries = 2) {
@@ -48,6 +49,36 @@ module.exports = new class extends Connector {
 
             throw e;
         }
+    }
+
+    async getTemplates (ids, retries = 2) {
+        const uri = this.buildUri(host, 'compliance', 'templates'); // CHANGE THIS WHEN API IS CREATED
+
+        let result = null;
+
+        try {
+            result = await this.doHttp({
+                uri: uri.toString(),
+                method: 'POST',
+                json: true,
+                rejectUnauthorized: !insecure,
+                headers: this.getForwardedHeaders(),
+                body: { ids }
+            }, false, this.metrics);
+        } catch (e) {
+            if (retries > 0) {
+                log.warn({ error: e, ids, retries }, 'Compliance post failed. Retrying');
+                return this.getTemplates(ids, true, retries - 1);
+            }
+
+            throw e;
+        }
+
+        if (_.isEmpty(result)) {
+            return null;
+        }
+
+        return result;
     }
 
     async ping () {
