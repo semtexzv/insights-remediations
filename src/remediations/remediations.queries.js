@@ -10,6 +10,7 @@ const REMEDIATION_ATTRIBUTES = [
     'id',
     'name',
     'auto_reboot',
+    'archived',
     'account_number',
     'created_by',
     'created_at',
@@ -48,6 +49,18 @@ function systemSubquery (system_id) {
     return literal(`(${sql})`);
 }
 
+function resolvedCountSubquery () {
+    const {s: { literal } } = db;
+
+    return literal(`(SELECT CAST(COUNT(remediation_issues.id) AS INT) FROM remediation_issues ` +
+    `WHERE NOT EXISTS(SELECT * FROM remediation_issue_systems ` +
+    `WHERE remediation_issues.id = remediation_issue_systems.remediation_issue_id ` +
+    `AND remediation_issue_systems.resolved = false) ` +
+    `AND remediation_issues.remediation_id = "remediation"."id" ` +
+    `AND EXISTS(SELECT * FROM remediation_issue_systems ` +
+    `WHERE remediation_issues.id = remediation_issue_systems.remediation_issue_id))`);
+}
+
 exports.list = function (
     account_number,
     created_by,
@@ -55,17 +68,18 @@ exports.list = function (
     primaryOrder = 'updated_at',
     asc = true,
     filter = false,
+    hide_archived,
     limit,
     offset) {
 
-    const {Op, s: {literal, where, col, cast}, fn: { DISTINCT, COUNT, SUM }} = db;
+    const {Op, s: {literal, where, col, cast}, fn: { DISTINCT, COUNT }} = db;
 
     const query = {
         attributes: [
             'id',
             [cast(COUNT(DISTINCT(col('issues.id'))), 'int'), 'issue_count'],
             [cast(COUNT(DISTINCT(col('issues->systems.system_id'))), 'int'), 'system_count'],
-            [cast(SUM(cast(where(col('issues->systems.resolved'), 'true'), 'int')), 'int'), 'resolved_count']
+            [resolvedCountSubquery(), 'resolved_count']
         ],
         include: [{
             attributes: [],
@@ -95,6 +109,12 @@ exports.list = function (
     if (system) {
         query.where.id = {
             [Op.in]: systemSubquery(system)
+        };
+    }
+
+    if (hide_archived) {
+        query.where.archived = {
+            [Op.eq]: false
         };
     }
 
@@ -149,18 +169,16 @@ exports.loadDetails = async function (account_number, created_by, rows) {
 };
 
 exports.get = function (id, account_number, created_by) {
-    const {s: {where, col, cast}, fn: { SUM }} = db;
-
     return db.remediation.findOne({
         attributes: [
             ...REMEDIATION_ATTRIBUTES,
-            [cast(SUM(cast(where(col('issues->systems.resolved'), 'true'), 'int')), 'int'), 'resolved_count']
+            [resolvedCountSubquery(), 'resolved_count']
         ],
         include: [{
             attributes: ISSUE_ATTRIBUTES,
             model: db.issue,
             include: {
-                attributes: ['system_id'],
+                attributes: ['system_id', 'resolved'],
                 association: db.issue.associations.systems,
                 required: true
             }

@@ -4,7 +4,7 @@ openapi: 3.0.0
 info:
   title: Insights Remediations
   description: Insights Remediations Service
-  version: 1.1.1
+  version: 1.3.2
   contact:
     email: jozef@redhat.com
 
@@ -38,6 +38,7 @@ paths:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
         - $ref: '#/components/parameters/RemediationSystem'
+        - $ref: '#/components/parameters/HideArchived'
       responses:
         200:
           description: OK
@@ -64,6 +65,28 @@ paths:
                 $ref: '#/components/schemas/RemediationCreated'
         400:
           $ref: '#/components/responses/BadRequest'
+
+  /remediations/download:
+    get:
+      tags:
+        - remediations
+      summary: Download Remediations
+      description: Downloads a zip file containing selected Remediations, RBAC permission {remediations:remediation:read}
+      operationId: downloadPlaybooks
+      parameters:
+        - $ref: '#/components/parameters/SelectedRemediations'
+      responses:
+        200:
+          description: OK
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        400:
+          $ref: '#/components/responses/BadRequest'
+        404:
+          $ref: '#/components/responses/NotFound'
 
   /remediations/{id}:
     get:
@@ -440,6 +463,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/SystemId'
         - $ref: '#/components/parameters/RemediationIdQuery'
+        - $ref: '#/components/parameters/BranchId'
       responses:
         200:
           description: OK
@@ -598,6 +622,31 @@ components:
       required: false
       schema:
         $ref: '#/components/schemas/ExecutorId'
+    HideArchived:
+      in: query
+      name: hide_archived
+      description: 'Hide archived playbooks'
+      required: false
+      schema:
+        type: boolean
+        default: false
+    SelectedRemediations:
+      in: query
+      name: selected_remediations
+      description: 'Selected Remediations for download'
+      required: false
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/RemediationId'
+    BranchId:
+      in: query
+      name: branch_id
+      description: 'Branch ID passed by satellite'
+      required: false
+      schema:
+        type: string
+        format: uuid
 
     IssueSystemsSort:
       in: query
@@ -664,7 +713,7 @@ components:
 
     IssueId:
       type: string
-      pattern: ^(advisor|vulnerabilities|ssg|test|patch-advisory):[\w\d_|:\.-]+$
+      pattern: ^(advisor|vulnerabilities|ssg|test|patch-advisory|patch-package):[\w\d_|:\.-]+$
       example: advisor:CVE_2017_6074_kernel|KERNEL_CVE_2017_6074
 
     RemediationAutoReboot:
@@ -696,6 +745,10 @@ components:
       nullable: true
       pattern: ^$|^.*[\w\d]+.*$  # empty string or anything that contains at least one character
       example: Fix Critical CVEs
+
+    RemediationArchived:
+      type: boolean
+      description: Indicates whether a remediation has been marked as archived
 
     SystemName:
       type: string
@@ -839,6 +892,8 @@ components:
       properties:
         name:
           $ref: '#/components/schemas/RemediationName'
+        archived:
+          $ref: '#/components/schemas/RemediationArchived'
         auto_reboot:
           $ref: '#/components/schemas/RemediationAutoReboot'
         add:
@@ -1221,7 +1276,7 @@ components:
     RemediationDetails:
       type: object
       additionalProperties: false
-      required: [id, name, needs_reboot, auto_reboot, created_by, created_at, updated_by, updated_at, resolved_count, issues]
+      required: [id, name, needs_reboot, auto_reboot, created_by, created_at, updated_by, updated_at, resolved_count, issues, archived]
       properties:
         id:
           $ref: '#/components/schemas/RemediationId'
@@ -1229,6 +1284,8 @@ components:
           $ref: '#/components/schemas/RemediationName'
         needs_reboot:
           $ref: '#/components/schemas/RemediationNeedsReboot'
+        archived:
+          $ref: '#/components/schemas/RemediationArchived'
         auto_reboot:
           $ref: '#/components/schemas/RemediationAutoReboot'
         created_by:
@@ -1312,7 +1369,7 @@ components:
     RemediationListItem:
       type: object
       additionalProperties: false
-      required: [id, name, created_by, created_at, updated_by, updated_at, issue_count, system_count, resolved_count, needs_reboot]
+      required: [id, name, created_by, created_at, updated_by, updated_at, issue_count, system_count, resolved_count, needs_reboot, archived]
       properties:
         id:
           $ref: '#/components/schemas/RemediationId'
@@ -1334,6 +1391,8 @@ components:
           $ref: '#/components/schemas/ResolvedCount'
         needs_reboot:
           $ref: '#/components/schemas/RemediationNeedsReboot'
+        archived:
+          $ref: '#/components/schemas/RemediationArchived'
 
     RemediationConnectionStatus:
       type: object
@@ -1404,6 +1463,10 @@ components:
           type: string
           nullable: true
           example: prod-db
+        resolved:
+          type: boolean
+          nullable: false
+          example: false
 
     UserOut:
       type: object

@@ -100,8 +100,8 @@ const config = {
 
     contentServer: {
         impl: env.CONTENT_SERVER_IMPL,
-        host: env.CONTENT_SERVER_HOST || 'http://localhost:8080',
-        auth: env.CONTENT_SERVER_AUTH || null,
+        host: env.CONTENT_SERVER_HOST || 'http://insights-advisor-api.advisor-ci.svc.cluster.local:8000',
+        auth: env.CONTENT_SERVER_AUTH || '',
         insecure: (env.CONTENT_SERVER_INSECURE === 'false') ? false : true,
         revalidationInterval: parseIntEnv('CONTENT_SERVER_REVALIDATION_INVERVAL', 60 * 60) // 1 hour
     },
@@ -155,7 +155,7 @@ const config = {
 
     vmaas: {
         impl: env.VMAAS_IMPL,
-        host: env.VMAAS_HOST || 'https://webapp-vmaas-stable.1b13.insights.openshiftapps.com',
+        host: env.VMAAS_HOST || 'https://webapp-vmaas-prod.apps.crcp01ue1.o9m8.p1.openshiftapps.com',
         revalidationInterval: parseIntEnv('VMAAS_REVALIDATION_INVERVAL', 60 * 60 * 12) // 12 hours
     },
 

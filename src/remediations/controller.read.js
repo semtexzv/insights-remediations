@@ -2,6 +2,8 @@
 
 const _ = require('lodash');
 const P = require('bluebird');
+const etag = require('etag');
+const JSZip = require('jszip');
 const errors = require('../errors');
 const issues = require('../issues');
 const queries = require('./remediations.queries');
@@ -15,6 +17,7 @@ const fifi = require('./fifi');
 
 const notFound = res => res.status(404).json();
 const noContent = res => res.sendStatus(204);
+const badRequest = res => res.sendStatus(400);
 
 const catchErrorCode = (code, fn) => e => {
     if (e.error && e.error.code === code) {
@@ -95,7 +98,7 @@ function inferNeedsReboot (remediation) {
 
 exports.list = errors.async(async function (req, res) {
     const {column, asc} = format.parseSort(req.query.sort);
-    const {limit, offset} = req.query;
+    const {limit, offset, hide_archived} = req.query;
 
     const {count, rows} = await queries.list(
         req.user.account_number,
@@ -104,6 +107,7 @@ exports.list = errors.async(async function (req, res) {
         column,
         asc,
         req.query.filter,
+        hide_archived,
         limit,
         offset);
 
@@ -127,6 +131,14 @@ exports.list = errors.async(async function (req, res) {
         // filter out issues with 0 systems and unknown issues
         remediation.issues = remediation.issues.filter(issue => issue.resolution);
         remediation.needs_reboot = inferNeedsReboot(remediation);
+
+        // issue_count is not filtered on 0 systems by default
+        remediation.issue_count = remediation.issues.length;
+
+        // if system_count & issue_count = 0 set resolved_count to 0
+        if (remediation.system_count === 0 && remediation.issue_count === 0) {
+            remediation.resolved_count = 0;
+        }
     });
 
     res.json(format.list(remediations, count.length, limit, offset, req.query.sort, req.query.system));
@@ -140,11 +152,11 @@ async function resolveSystems (remediation) {
 
     remediation.issues.forEach(issue => issue.systems = issue.systems
     .filter(({system_id}) => _.has(resolvedSystems, system_id)) // filter out systems not found in inventory
-    .map(({system_id}) => {
+    .map(({system_id, resolved}) => {
         // filtered above
         // eslint-disable-next-line security/detect-object-injection
         const { hostname, display_name } = resolvedSystems[system_id];
-        return { system_id, hostname, display_name };
+        return { system_id, hostname, display_name, resolved };
     }));
 }
 
@@ -210,6 +222,58 @@ exports.playbook = errors.async(async function (req, res) {
     }
 
     generator.send(req, res, playbook, format.playbookName(remediation));
+});
+
+exports.downloadPlaybooks = errors.async(async function (req, res) {
+    const zip = new JSZip();
+    let generateZip = true;
+
+    if (!req.query.selected_remediations) {
+        return badRequest(res);
+    }
+
+    await P.map(req.query.selected_remediations, async id => {
+        const remediation = await queries.get(id, req.user.account_number, req.user.username);
+
+        if (!remediation) {
+            generateZip = false;
+            return notFound(res);
+        }
+
+        const issues = remediation.toJSON().issues;
+
+        if (issues.length === 0) {
+            generateZip = false;
+            return noContent(res);
+        }
+
+        const normalizedIssues = generator.normalizeIssues(issues);
+
+        const playbook = await generator.playbookPipeline({
+            issues: normalizedIssues,
+            auto_reboot: remediation.auto_reboot
+        }, remediation, false);
+
+        if (!playbook) {
+            generateZip = false;
+            return noContent(res);
+        }
+
+        zip.file(format.playbookName(remediation), playbook.yaml);
+    });
+
+    if (generateZip) {
+        zip.generateAsync({type: 'nodebuffer'}).then(zipBuffer => {
+            res.set('Content-type', 'application/zip');
+            res.set('Content-disposition', 'attachment;filename=remediations.zip');
+            res.set('etag', etag(zipBuffer, { weak: true }));
+            if (req.stale) {
+                res.send(zipBuffer).end();
+            } else {
+                res.status(304).end();
+            }
+        });
+    }
 });
 
 exports.getIssueSystems = errors.async(async function (req, res) {

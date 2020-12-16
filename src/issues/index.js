@@ -3,9 +3,11 @@
 const errors = require('../errors');
 
 const ERRATUM_PATTERN = /^RH[SBE]A-20[\d]{2}:[\d]{4,5}/;
-const CSAW_PATTERN = /^CVE-20[\d]{2}-[\d]{4,}:(([a-z_])+\|([A-Z_])+)/;
-const ADVISOR_PATTERN = /([a-z_])+\|([A-Z_])+/;
+const CSAW_PATTERN = /^CVE-20[\d]{2}-[\d]{4,}:\w+\|[A-Z\d_]+$/;
+const ADVISOR_PATTERN = /^\w+\|[A-Z\d_]+$/;
 const CVE_PATTERN = /^CVE-20[\d]{2}-[\d]{4,}/;
+// eslint-disable-next-line security/detect-unsafe-regex
+const PKG_PATTERN = /^([\d]+:)?[^:]+-([\d]+:)?[^-:]+-[^-:]+\.[a-z0-9_]+$/;
 
 const advisorHandler = new(require('./AdvisorHandler'))();
 const cveHandler = new(require('./CVEHandler'))();
@@ -22,16 +24,12 @@ function getHandler (id) {
         case 'advisor': return advisorHandler;
         case 'ssg': return ssgHandler;
         case 'vulnerabilities':
-            if (CSAW_PATTERN.test(id.issue)) {
+            if (CSAW_PATTERN.test(id.issue) || ADVISOR_PATTERN.test(id.issue)) {
                 return csawHandler;
             }
 
             if (CVE_PATTERN.test(id.issue)) {
                 return cveHandler;
-            }
-
-            if (ADVISOR_PATTERN.test(id.issue)) {
-                return advisorHandler;
             }
 
             if (ERRATUM_PATTERN.test(id.issue)) {
@@ -46,7 +44,13 @@ function getHandler (id) {
                 return patchmanHandler;
             }
 
-            return packageHandler;
+            return packageHandler; // TODO: remove after switching to "patch-package"
+        case 'patch-package':
+            if (PKG_PATTERN.test(id.issue)) {
+                return packageHandler;
+            }
+
+            throw errors.unknownIssue(id);
         default:
             throw errors.unknownIssue(id);
     }

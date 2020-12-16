@@ -16,6 +16,7 @@ exports.up = async q => {
         id: '66eec356-dd06-4c72-a3b6-ef27d1508a02',
         name: 'remediation 1',
         auto_reboot: true,
+        archived: true,
         account_number,
         created_by,
         created_at: '2018-10-04T08:19:36.641Z',
@@ -26,6 +27,7 @@ exports.up = async q => {
         name: 'remediation 2',
         auto_reboot: true,
         account_number,
+        archived: false,
         created_by,
         created_at: '2018-11-04T08:19:36.641Z',
         updated_by: created_by,
@@ -35,6 +37,7 @@ exports.up = async q => {
         name: null,
         auto_reboot: false,
         account_number,
+        archived: false,
         created_by,
         created_at: '2018-12-04T08:19:36.641Z',
         updated_by: created_by,
@@ -44,6 +47,7 @@ exports.up = async q => {
         name: 'Remediation with suppressed reboot',
         auto_reboot: false,
         account_number,
+        archived: true,
         created_by,
         created_at: '2018-12-05T08:19:36.641Z',
         updated_by: created_by,
@@ -53,6 +57,7 @@ exports.up = async q => {
         name: 'Remediation with zero issues',
         auto_reboot: false,
         account_number,
+        archived: false,
         created_by,
         created_at: '2018-12-06T08:19:36.641Z',
         updated_by: created_by,
@@ -86,6 +91,9 @@ exports.up = async q => {
     }, {
         remediation_id: remediations[3].id,
         issue_id: 'advisor:CVE_2017_6074_kernel|KERNEL_CVE_2017_6074'
+    }, {
+        remediation_id: remediations[0].id,
+        issue_id: 'vulnerabilities:CVE-2017-5715:CVE_2017_6074_kernel|KERNEL_CVE_2017_6074'
     }], opts);
 
     await q.bulkInsert('remediation_issue_systems', [{
@@ -127,9 +135,13 @@ exports.up = async q => {
     }, {
         remediation_issue_id: issues[7].id,
         system_id: systems[1],
-        resolved: false
+        resolved: true
     }, {
         remediation_issue_id: issues[8].id,
+        system_id: systems[0],
+        resolved: false
+    }, {
+        remediation_issue_id: issues[9].id,
         system_id: systems[0],
         resolved: false
     }]);

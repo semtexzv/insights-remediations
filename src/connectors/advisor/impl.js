@@ -45,11 +45,16 @@ module.exports = new class extends Connector {
         this.ruleMetrics);
     }
 
-    async getDiagnosis (system) {
+    async getDiagnosis (system, branchId = null) {
         const uri = this.buildBaseUri();
         uri.segment('system');
         uri.segment(system);
         uri.segment('reports');
+
+        if (branchId) {
+            uri.segment('/'); // Quirk of the Advisor API
+            uri.query({branch_id: branchId});
+        }
 
         const data = await this.doHttp({
             uri: uri.toString(),

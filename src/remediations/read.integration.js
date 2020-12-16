@@ -2,9 +2,10 @@
 'use strict';
 
 const _ = require('lodash');
-const { request, auth, reqId, buildRbacResponse, getSandbox } = require('../test');
+const { request, auth, reqId, buildRbacResponse, getSandbox, mockTime } = require('../test');
 const rbac = require('../connectors/rbac');
 const inventory = require('../connectors/inventory');
+const JSZip = require('jszip');
 
 function test400 (name, url, code, title) {
     test(name, async () => {
@@ -20,6 +21,17 @@ function test400 (name, url, code, title) {
             code,
             title
         }]);
+    });
+}
+
+function binaryParser (res, callback) {
+    res.setEncoding('binary');
+    res.data = '';
+    res.on('data', function (chunk) {
+        res.data += chunk;
+    });
+    res.on('end', function () {
+        callback(null, new Buffer.from(res.data, 'binary'));
     });
 }
 
@@ -176,6 +188,11 @@ describe('remediations', function () {
                 'Requested starting offset 123456 out of range: [0, 4]'
             );
         });
+
+        describe('hide archived', function () {
+            testList('no query', '/v1/remediations?pretty', r256, r178, re80, rcbc, r66e);
+            testList('hide_archived', '/v1/remediations?hide_archived', r256, re80, rcbc);
+        });
     });
 
     describe('get', function () {
@@ -196,6 +213,7 @@ describe('remediations', function () {
                 id: 'e809526c-56f5-4cd8-a809-93328436ea23',
                 name: 'Unnamed Playbook',
                 needs_reboot: false,
+                archived: false,
                 auto_reboot: false,
                 created_by: {
                     username: 'tuser@redhat.com',
@@ -209,7 +227,7 @@ describe('remediations', function () {
                     last_name: 'user'
                 },
                 updated_at: '2018-12-04T08:19:36.641Z',
-                resolved_count: 0,
+                resolved_count: 1,
                 issues: [{
                     id: 'advisor:network_bond_opts_config_issue|NETWORK_BONDING_OPTS_DOUBLE_QUOTES_ISSUE',
                     description: 'Bonding will not fail over to the backup link when bonding options are partially read',
@@ -223,11 +241,13 @@ describe('remediations', function () {
                     systems: [{
                         id: '1f12bdfc-8267-492d-a930-92f498fe65b9',
                         hostname: '1f12bdfc-8267-492d-a930-92f498fe65b9.example.com',
-                        display_name: null
+                        display_name: null,
+                        resolved: true
                     }, {
                         id: 'fc94beb8-21ee-403d-99b1-949ef7adb762',
                         hostname: null,
-                        display_name: null
+                        display_name: null,
+                        resolved: true
                     }]
                 }]
             });
@@ -296,6 +316,16 @@ describe('remediations', function () {
             body.issues.should.have.length(0);
         });
 
+        test('get remediation with system-less issue', async () => {
+            const {body} = await request
+            .get('/v1/remediations/d1b070b5-1db8-4dac-8ecf-891dc1e9225f?pretty')
+            .set(auth.testReadSingle)
+            .expect(200);
+
+            body.issues.should.have.length(0);
+            body.resolved_count.should.equal(0);
+        });
+
         test('listing of remediations does not blow up', async () => {
             const {text} = await request
             .get('/v1/remediations?pretty')
@@ -314,6 +344,7 @@ describe('remediations', function () {
             const remediation = _.find(body.data, {id: 'd1b070b5-1db8-4dac-8ecf-891dc1e9225f'});
             remediation.should.have.property('system_count', 0);
             remediation.should.have.property('issue_count', 0);
+            remediation.should.have.property('resolved_count', 0);
         });
     });
 
@@ -503,7 +534,7 @@ describe('remediations', function () {
             '400 on bad issue_id',
             '/v1/remediations/5e6d136e-ea32-46e4-a350-325ef41790f4/issues/test:/systems',
             'pattern.openapi.validation',
-            'should match pattern "^(advisor|vulnerabilities|ssg|test|patch-advisory):[\\w\\d_|:\\.-]+$" (location: path, path: issue)'
+            'should match pattern "^(advisor|vulnerabilities|ssg|test|patch-advisory|patch-package):[\\w\\d_|:\\.-]+$" (location: path, path: issue)'
         );
 
         test400(
@@ -563,6 +594,71 @@ describe('remediations', function () {
             body.errors[0].details.message.should.equal(
                 'Permission remediations:remediation:read is required for this operation'
             );
+        });
+    });
+
+    describe('download remediations', function () {
+        /* eslint-disable jest/valid-expect-in-promise */
+        test('download zip and verify remediation content', async () => {
+            mockTime();
+            const result = await request
+            .get('/v1/remediations/download?selected_remediations=c3f9f751-4bcc-4222-9b83-77f5e6e603da')
+            .set('Accept', 'application/zip')
+            .set(auth.testReadSingle)
+            .expect('Content-Type', 'application/zip')
+            .expect(200)
+            .buffer()
+            .parse(binaryParser)
+            .then(function (res) {
+                const zip = new JSZip();
+                return zip.loadAsync(res.body).then(function (z) {
+                    expect(Object.keys(z.files).length).toBe(1);
+                    return z.file('many-systems-1546071635.yml').async('string');
+                }).then(function (text) {
+                    return text.replace(/# Generated.+/, '');
+                });
+            });
+
+            expect(result).toMatchSnapshot();
+        });
+
+        test('download zip with multiple remediations and verify number of files', async () => {
+            mockTime();
+            const result = await request
+            .get('/v1/remediations/download?selected_remediations=c3f9f751-4bcc-4222-9b83-77f5e6e603da,82aeb63f-fc25-4eef-9333-4fa7e10f7217')
+            .set('Accept', 'application/zip')
+            .set(auth.testReadSingle)
+            .expect('Content-Type', 'application/zip')
+            .expect(200)
+            .buffer()
+            .parse(binaryParser)
+            .then(function (res) {
+                const zip = new JSZip();
+                return zip.loadAsync(res.body).then(function (z) {
+                    expect(Object.keys(z.files).length).toBe(2);
+                    return z.file('missing-system-1-1546071635.yml').async('string');
+                }).then(function (text) {
+                    return text.replace(/# Generated.+/, '');
+                });
+            });
+
+            expect(result).toMatchSnapshot();
+        });
+
+        test('with empty selected_remediations', async () => {
+            const {body} = await request
+            .get('/v1/remediations/download?selected_remediations=')
+            .expect(400);
+
+            body.errors[0].title.should.equal(
+                'should match format "uuid" (location: query, path: selected_remediations[0])'
+            );
+        });
+
+        test('with valid, but non existent remediationId', async () => {
+            await request
+            .get('/v1/remediations/download?selected_remediations=77eec356-dd06-4c72-a3b6-ef27d1508a02')
+            .expect(404);
         });
     });
 });
