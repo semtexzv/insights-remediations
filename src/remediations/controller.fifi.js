@@ -87,10 +87,16 @@ exports.listPlaybookRuns = errors.async(async function (req, res) {
     const {column, asc} = format.parseSort(req.query.sort);
     const {limit, offset} = req.query;
     let remediation = await queries.getPlaybookRuns(req.params.id, req.user.account_number, req.user.username, column, asc);
+    const rhcRuns = await fifi.getRHCRuns();
 
-    if (!remediation) {
+    if (!remediation && !rhcRuns) {
         return notFound(res);
     }
+
+    remediation = remediation.toJSON();
+
+    // Join rhcRuns and playbookRuns
+    remediation.playbook_runs = fifi.combineRuns(rhcRuns, remediation, req.params.id, req.user.username);
 
     const total = fifi.getListSize(remediation.playbook_runs);
 
@@ -115,9 +121,16 @@ exports.getRunDetails = errors.async(async function (req, res) {
         req.user.username
     );
 
-    if (!remediation) {
+    const rhcRuns = await fifi.getRHCRuns(req.params.playbook_run_id);
+
+    if (!remediation && !rhcRuns) {
         return notFound(res);
     }
+
+    remediation = remediation.toJSON();
+
+    // Join rhcRuns and playbookRuns
+    remediation.playbook_runs = fifi.combineRuns(rhcRuns, remediation, req.params.id, req.user.username);
 
     remediation = await fifi.resolveUsers(req, remediation);
 
@@ -129,23 +142,25 @@ exports.getRunDetails = errors.async(async function (req, res) {
 exports.getSystems = errors.async(async function (req, res) {
     const {column, asc} = format.parseSort(req.query.sort);
     const {limit, offset} = req.query;
-    const {count, rows} = await queries.getSystems(
+    let systems = await queries.getSystems(
         req.params.id,
         req.params.playbook_run_id,
         req.query.executor,
         req.query.ansible_host,
-        column,
-        asc,
-        limit,
-        offset,
         req.user.account_number,
         req.user.username
     );
 
-    const systems = rows;
+    const rhcRunHosts = await fifi.getRunHosts(req.params.playbook_run_id);
 
-    if (offset >= Math.max(count, 1)) {
-        throw errors.invalidOffset(offset, count);
+    if (!req.query.ansible_host && rhcRunHosts) {
+        if (req.query.executor && _.isEmpty(systems)) {
+            systems = fifi.formatRunHosts(rhcRunHosts);
+        }
+
+        if (!req.query.executor) {
+            fifi.combineHosts(rhcRunHosts, systems);
+        }
     }
 
     if (_.isEmpty(systems)) {
@@ -161,13 +176,24 @@ exports.getSystems = errors.async(async function (req, res) {
         }
     }
 
-    const formatted = format.playbookSystems(systems, count);
+    // Pagination
+    const total = fifi.getListSize(systems);
+    systems = await fifi.pagination(systems, total, limit, offset);
+
+    if (offset >= Math.max(total, 1)) {
+        throw errors.invalidOffset(offset, total);
+    }
+
+    // Sort Systems: default system_name ASC
+    systems = fifi.sortSystems(systems, column, asc);
+
+    const formatted = format.playbookSystems(systems, total);
 
     res.status(200).send(formatted);
 });
 
 exports.getSystemDetails = errors.async(async function (req, res) {
-    const system = await queries.getSystemDetails(
+    let system = await queries.getSystemDetails(
         req.params.id,
         req.params.playbook_run_id,
         req.params.system,
@@ -175,8 +201,16 @@ exports.getSystemDetails = errors.async(async function (req, res) {
         req.user.username
     );
 
+    if (system) {
+        system = system.toJSON();
+    }
+
     if (!system) {
-        return notFound(res);
+        system = await fifi.getRunHostDetails(req.params.playbook_run_id, req.params.system);
+
+        if (!system) {
+            return notFound(res);
+        }
     }
 
     const formated = format.playbookSystemDetails(system);

@@ -12,7 +12,7 @@ const generator = require('../generator/generator.controller');
 const inventory = require('../connectors/inventory');
 const sources = require('../connectors/sources');
 const receptorConnector = require('../connectors/receptor');
-const dispatcherConnector = require('../connectors/dispatcher');
+const dispatcher = require('../connectors/dispatcher');
 const log = require('../util/log');
 const probes = require('../probes');
 const read = require('./controller.read');
@@ -21,11 +21,18 @@ const queries = require('./remediations.queries');
 const SATELLITE_NAMESPACE = Object.freeze({namespace: 'satellite'});
 const SYSTEM_FIELDS = Object.freeze(['id', 'ansible_host', 'hostname', 'display_name', 'rhc_client']);
 
+const RUNSFIELDS = Object.freeze({fields: {data: ['id', 'labels', 'status', 'service', 'created_at', 'updated_at']}});
+const RUNHOSTFIELDS = Object.freeze({fields: {data: ['stdout']}});
+const RHCSTATUSES = ['timeout', 'failure', 'success', 'running'];
+
 const DIFF_MODE = false;
 const FULL_MODE = true;
 
 const PENDING = 'pending';
 const FAILURE = 'failure';
+const RUNNING = 'running';
+const SUCCESS = 'success';
+const SERVICE = 'remediations';
 
 exports.checkSmartManagement = async function (remediation, smart_management) {
     // if customer has smart_management entitlement fastlane them
@@ -41,6 +48,187 @@ exports.checkSmartManagement = async function (remediation, smart_management) {
     const systemsProfiles = await inventory.getSystemProfileBatch(systemsIds);
 
     return _.some(systemsProfiles, system => system.system_profile.is_marketplace === true);
+};
+
+exports.sortSystems = function (systems, column = 'system_name', asc = true) {
+    return _.orderBy(systems, column, (asc) ? 'asc' : 'desc');
+};
+
+function createDispatcherRunsFilter (playbook_run_id = null) {
+    // Based on the qs library used in dispatcher connector, define filter in this format
+    const runsFilter = {filter: {}};
+    runsFilter.filter.service = SERVICE;
+
+    if (playbook_run_id) {
+        runsFilter.filter.labels = {'playbook-run': playbook_run_id};
+    }
+
+    return runsFilter;
+}
+
+function createDispatcherRunHostsFilter (playbook_run_id, host_id = null) {
+    const runHostsFilter = {filter: {run: {}}};
+    runHostsFilter.filter.run.service = SERVICE;
+    runHostsFilter.filter.run.labels = {'playbook-run': playbook_run_id};
+
+    if (host_id) {
+        runHostsFilter.filter.run.id = host_id;
+    }
+
+    return runHostsFilter;
+}
+
+function findRunStatus (run) {
+    if (run.count_failure > 0 || run.count_timeout > 0) {
+        return FAILURE;
+    } else if (run.count_running > 0 && run.count_timeout === 0 && run.count_failure === 0) {
+        return RUNNING;
+    } else if (run.success > 0 && run.timeout === 0) {
+        return SUCCESS;
+    }
+}
+
+function formatRHCRuns (rhcRuns) {
+    const groupedRuns = _.groupBy(rhcRuns.data, run => run.labels['playbook-run']);
+
+    _.forEach(groupedRuns, run => {
+        run.system_count = _.size(run);
+
+        // Assign each status count
+        RHCSTATUSES.forEach(status => {
+            run[`count_${status}`] = _.size(_.filter(run, executor => executor.status === status));
+        });
+
+        // Status of executor
+        run.status = findRunStatus(run);
+    });
+
+    return groupedRuns;
+}
+
+exports.formatRunHosts = function (rhcRunHosts) {
+    return _.map(rhcRunHosts.data, host => ({
+        system_id: host.id,
+        system_name: 'localhost',
+        status: host.status,
+        updated_at: host.updated_at,
+        playbook_run_executor_id: exports.generateUuid()
+    }));
+};
+
+function formatRHCHostDetails (host, details) {
+    return {
+        system_id: host.id,
+        system_name: 'localhost',
+        status: host.status,
+        updated_at: host.updated_at,
+        console: details.data[0].stdout,
+        executor_id: exports.generateUuid()
+    };
+}
+
+function pushRHCSystem (host, systems) {
+    systems.push({
+        system_id: host.system_id,
+        system_name: 'localhost',
+        status: host.status,
+        updated_at: host.updated_at,
+        playbook_run_executor_id: exports.generateUuid()
+    });
+}
+
+function pushRHCExecutor (rhcRun, satRun) {
+    satRun.executors.push({
+        executor_id: exports.generateUuid(),
+        executor_name: 'Direct connected',
+        status: rhcRun.status,
+        system_count: rhcRun.system_count,
+        playbook_run_id: rhcRun[0].labels['playbook-run'],
+        playbook: rhcRun[0].url,
+        updated_at: rhcRun[0].updated_at,
+        count_failure: rhcRun.count_failure,
+        count_success: rhcRun.count_success,
+        count_running: rhcRun.count_running,
+        count_pending: 0, // RHC does not return the status pending
+        count_canceled: 0 // RHC does not currently return status canceled
+    });
+}
+
+function pushRHCRun (rhcRun, remediation, remediation_id, created_by) {
+    remediation.playbook_runs.push({
+        id: rhcRun[0].labels['playbook-run'],
+        status: rhcRun.status,
+        remediation_id,
+        created_by,
+        created_at: rhcRun[0].created_at,
+        updated_at: rhcRun[0].updated_at,
+        executors: []
+    });
+
+    const satRun = _.find(remediation.playbook_runs, satRun => satRun.id === rhcRun[0].labels['playbook-run']);
+    pushRHCExecutor(rhcRun, satRun);
+}
+
+exports.getRHCRuns = async function (playbook_run_id = null) {
+    const filter = createDispatcherRunsFilter(playbook_run_id);
+    const rhcRuns = await dispatcher.fetchPlaybookRuns(filter, RUNSFIELDS);
+
+    return rhcRuns;
+};
+
+exports.getRunHosts = async function (playbook_run_id) {
+    const runsFilter = createDispatcherRunsFilter(playbook_run_id);
+    const rhcRunHosts = await dispatcher.fetchPlaybookRuns(runsFilter, RUNSFIELDS);
+
+    return rhcRunHosts;
+};
+
+exports.getRunHostDetails = async function (playbook_run_d, system_id) {
+    const runsFilter = createDispatcherRunHostsFilter(playbook_run_d);
+    const runHostsFilter = createDispatcherRunHostsFilter(playbook_run_d, system_id);
+    const rhcRunHosts = await dispatcher.fetchPlaybookRuns(runsFilter, RUNSFIELDS);
+    const rhcRunHostDetails = await dispatcher.fetchPlaybookRunHosts(runHostsFilter, RUNHOSTFIELDS);
+
+    if (!rhcRunHosts || !rhcRunHostDetails) {
+        return null;
+    }
+
+    const host = _.find(rhcRunHosts.data, host => host.id === system_id);
+
+    return formatRHCHostDetails(host, rhcRunHostDetails);
+};
+
+exports.combineHosts = function (rhcRunHosts, systems) {
+    rhcRunHosts = exports.formatRunHosts(rhcRunHosts);
+
+    _.forEach(rhcRunHosts, host => {
+        pushRHCSystem(host, systems);
+    });
+};
+
+exports.combineRuns = function (rhcRuns, remediation, remediation_id, created_by) {
+    if (!rhcRuns) {
+        return remediation.playbook_runs;
+    }
+
+    rhcRuns = formatRHCRuns(rhcRuns);
+
+    if (!remediation) {
+        _.forEach(rhcRuns, rhcRun => {
+            pushRHCRun(rhcRun, remediation, remediation_id, created_by);
+        });
+    }
+
+    _.forEach(rhcRuns, rhcRun => {
+        const satRun = _.find(remediation.playbook_runs, run => run.id === rhcRun[0].labels['playbook-run']);
+        if (_.isUndefined(satRun)) {
+            pushRHCRun(rhcRun, remediation, remediation_id, created_by);
+        } else {
+            pushRHCExecutor(rhcRun, satRun);
+        }
+    });
+
+    return remediation.playbook_runs;
 };
 
 async function fetchRHCClientId (systems) {
@@ -288,7 +476,7 @@ exports.resolveUsers = async function (req, remediation) {
     return remediation;
 };
 
-exports.generatePlaybookRunId = function () {
+exports.generateUuid = function () {
     return uuidv4();
 };
 
@@ -429,7 +617,7 @@ function dispatchCancelRequests (requests, playbook_run_id) {
 async function dispatchRHCRequests ({executor, rhcWorkRequest}, playbook_run_id) {
     try {
         probes.splitPlaybookPerRHCEnabledSystems(rhcWorkRequest, executor.systems, playbook_run_id);
-        const response = await dispatcherConnector.postPlaybookRunRequests(rhcWorkRequest);
+        const response = await dispatcher.postPlaybookRunRequests(rhcWorkRequest);
         probes.rhcJobDispatched(rhcWorkRequest, executor, response, playbook_run_id);
         return response;
     } catch (e) {
@@ -478,7 +666,7 @@ async function storePlaybookRun (remediation, playbook_run_id, requests, respons
 }
 
 exports.createPlaybookRun = async function (status, remediation, username, excludes, response_mode) {
-    const playbook_run_id = exports.generatePlaybookRunId();
+    const playbook_run_id = exports.generateUuid();
     const executors = filterExecutors(status, excludes);
     const remediationIssues = remediation.toJSON().issues;
     const text_update_full = findResponseMode(response_mode, executors);
@@ -525,8 +713,6 @@ exports.createPlaybookRun = async function (status, remediation, username, exclu
     if (splitRequests.RHC) {
         const rhcRequests = splitRequests.RHC[0]; // There should only ever be one
         await dispatchRHCRequests(rhcRequests, playbook_run_id);
-
-        // TODO: Store responses??
     }
 
     return playbook_run_id;
