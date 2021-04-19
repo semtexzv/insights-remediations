@@ -3,6 +3,7 @@
 
 const { request, auth, mockDate, mockPlaybookRunId, buildRbacResponse } = require('../test');
 const utils = require('../middleware/identity/utils');
+const configManager = require('../connectors/configManager');
 const receptor = require('../connectors/receptor');
 const fifi = require('../remediations/fifi');
 const base = require('../test');
@@ -69,6 +70,25 @@ describe('FiFi', function () {
             .expect(200);
 
             expect(text).toMatchSnapshot();
+        });
+
+        test('get connection status with false smartManagment but not configured with config manager', async () => {
+            base.getSandbox().stub(config, 'isMarketplace').value(true);
+            base.getSandbox().stub(configManager, 'getCurrentState').resolves({
+                account: '654321',
+                state: {
+                    remediations: 'disabled'
+                },
+                id: 'c5639a03-4640-4ae3-93ce-9966cae18df7',
+                label: 'b7839a03-4640-4ae3-93ce-9966cae18df8'
+            });
+            await request
+            .get('/v1/remediations/0ecb5db7-2f1a-441b-8220-e5ce45066f50/connection_status?pretty')
+            .set(utils.IDENTITY_HEADER, utils.createIdentityHeader('fifi', 'fifi', true, data => {
+                data.entitlements.smart_management = false;
+                return data;
+            }))
+            .expect(403);
         });
 
         test('sets ETag', async () => {
@@ -788,6 +808,25 @@ describe('FiFi', function () {
                     return data;
                 }))
                 .expect(201);
+            });
+
+            test('execute playbook_run with false smartManagement but without config enabled', async () => {
+                base.getSandbox().stub(config, 'isMarketplace').value(true);
+                base.getSandbox().stub(configManager, 'getCurrentState').resolves({
+                    account: '654321',
+                    state: {
+                        remediations: 'disabled'
+                    },
+                    id: 'c5639a03-4640-4ae3-93ce-9966cae18df7',
+                    label: 'b7839a03-4640-4ae3-93ce-9966cae18df8'
+                });
+                await request
+                .post('/v1/remediations/249f142c-2ae3-4c3f-b2ec-c8c5881f8561/playbook_runs')
+                .set(utils.IDENTITY_HEADER, utils.createIdentityHeader('fifi', 'fifi', true, data => {
+                    data.entitlements.smart_management = false;
+                    return data;
+                }))
+                .expect(403);
             });
 
             test('sets ETag', async () => {

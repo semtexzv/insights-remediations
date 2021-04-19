@@ -11,6 +11,7 @@ const format = require('./remediations.format');
 const generator = require('../generator/generator.controller');
 const inventory = require('../connectors/inventory');
 const sources = require('../connectors/sources');
+const configManager = require('../connectors/configManager');
 const receptorConnector = require('../connectors/receptor');
 const dispatcherConnector = require('../connectors/dispatcher');
 const log = require('../util/log');
@@ -24,6 +25,7 @@ const SYSTEM_FIELDS = Object.freeze(['id', 'ansible_host', 'hostname', 'display_
 const DIFF_MODE = false;
 const FULL_MODE = true;
 
+const DISABLED = 'disabled';
 const PENDING = 'pending';
 const FAILURE = 'failure';
 
@@ -34,6 +36,12 @@ exports.checkSmartManagement = async function (remediation, smart_management) {
     }
 
     if (!config.isMarketplace) {
+        return false;
+    }
+
+    const rhcStates = await configManager.getCurrentState();
+
+    if (rhcStates.state.remediations === DISABLED) {
         return false;
     }
 
